@@ -48,6 +48,12 @@ class Reservation(pydantic.BaseModel):
     def __repr__(self):
         return str(self)
 
+class Event(pydantic.BaseModel):
+    title: str
+    machine: Machine
+    start: int
+    end: int
+    region: Region
 
 
 # regions with probabilities (in dict)
@@ -115,6 +121,10 @@ def compute_loss_for_reservations(reservations):
     return loss
 
     
+def generate_random_fraction_duration():
+    return np.random.randint(0, 24) + AVERAGE_MINUTES_PER_FRACTION
+    # return AVERAGE_MINUTES_PER_FRACTION
+
 
 def make_reservation(patient, machines, reservations):
     m: Machine = None
@@ -127,8 +137,10 @@ def make_reservation(patient, machines, reservations):
                 m = machine
                 closest_time_minutes = MACHINE_RESERVATION_MAP[machine]
             
-    MACHINE_RESERVATION_MAP[m] += AVERAGE_MINUTES_PER_FRACTION
-    reservations.append(Reservation(patient=patient, machine=m, start_time=closest_time_minutes, end_time=closest_time_minutes + AVERAGE_MINUTES_PER_FRACTION, urgency=REGIONS_INFO[patient.region]["probability"]))
+    duration = generate_random_fraction_duration()
+    MACHINE_RESERVATION_MAP[m] += duration
+    # reservations.append(Reservation(patient=patient, machine=m, start_time=closest_time_minutes, end_time=closest_time_minutes + AVERAGE_MINUTES_PER_FRACTION, urgency=REGIONS_INFO[patient.region]["probability"]))
+    reservations.append(Reservation(patient=patient, machine=m, start_time=closest_time_minutes, end_time=closest_time_minutes + duration, urgency=REGIONS_INFO[patient.region]["probability"]))
     assert(m is not None)
     
 
@@ -141,7 +153,25 @@ def create_all_reservations(patients, reservations):
 
 AVERAGE_MINUTES_PER_FRACTION = 12 # 12 minutes
 
-PATIENTS_NUM = 10
+PATIENTS_NUM = 40
+
+def create_events(reservations):
+    events = []
+    for r in reservations:
+        events.append(Event(title=str(f"{r.urgency} {r.patient.id}"), machine=r.machine, start=r.start_time, end=r.end_time, region=r.patient.region))
+
+    # create dict of events but also parse Machine and Region as strings
+    events_json = []
+    for e in events:
+        e.machine = e.machine.value
+        e.region = e.region.value
+        events_json.append(e.dict())
+
+    import json
+    with open("../front/web/public/events.json", "w") as f:
+        json.dump(events_json, f)
+        
+    return events
 
 def main():
     reservations = []
@@ -153,7 +183,7 @@ def main():
     min_loss = 1e9
     max_loss = 0
 
-    while n < 1000:
+    while n < 10000:
         random_picked = random.sample(patients, PATIENTS_NUM)
         processed_ids = [patient.id for patient in random_picked]
         hash_processed = hash(tuple(processed_ids))
@@ -189,6 +219,8 @@ def main():
     print(r_with_max_loss)
     print(min_loss)
     print(max_loss)
+
+    create_events(r_with_min_loss)
 
 
 if __name__ == "__main__":
