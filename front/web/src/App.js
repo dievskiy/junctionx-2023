@@ -54,7 +54,6 @@ const myEventsList = [
 ];
 // seems like there's no overlap support with resources
 
-
 function App() {
     const propagateMachinesToResources = () => {
         let id = 1;
@@ -89,8 +88,58 @@ function App() {
         });
     }
 
+    const mapMachineToResourceId = (machine) => {
+        switch (machine) {
+            case "TB1":
+                return machines.TB1;
+            case "TB2":
+                return machines.TB2;
+            case "VB1":
+                return machines.VB1;
+            case "VB2":
+                return machines.VB2;
+            case "U":
+                return machines.U;
+        }
+    }
+    const adaptEventsFromDisk = () => {
+        let id = 0;
+        let adaptedEvents = [];
+
+        eventsFromDisk.forEach(event => {
+            let start = new Date();
+            let end = new Date();
+            start.setMinutes(start.getMinutes() + event.start);
+            end.setMinutes(end.getMinutes() + event.end);
+            adaptedEvents.push({
+                id: id++,
+                title: event.title,
+                allDay: false,
+                start: start,
+                end: end,
+                resourceId: mapMachineToResourceId(event.machine),
+                region: event.region,
+                machine: event.machine,
+            })
+        })
+
+        setEvents(adaptedEvents);
+        console.log(adaptedEvents)
+        return adaptedEvents;
+    }
+
+
     const [resources, setResources] = useState([]);
-    const [events, setEvents] = useState(myEventsList);
+    // const [events, setEvents] = useState(myEventsList);
+    const [events, setEvents] = useState([]);
+    const [eventsFromDisk, setEventsFromDisk] = useState([]);
+
+    useEffect(() => {
+        fetch('/events.json')
+            .then(response => response.json())
+            .then(data => setEventsFromDisk(data), adaptEventsFromDisk())
+            .catch(error => console.error(error));
+    }, [adaptEventsFromDisk]);
 
     useEffect(() => {
         propagateMachinesToResources();
