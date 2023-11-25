@@ -52,20 +52,13 @@ const myEventsList = [
         machine: machines.VB1,
     },
 ];
+// seems like there's no overlap support with resources
 
 
 function App() {
     const propagateMachinesToResources = () => {
-        setResources([])
         let id = 1;
-        for (const machine in machines) {
-            setResources(prevResources => {
-                return [...prevResources, {
-                    id: id++,
-                    name: machine,
-                }]
-            })
-        }
+        setResources([{'id': id++, 'name': 'TB1'}, {'id': id++, 'name': 'TB2'}, {'id': id++, 'name': 'VB1'}, {'id': id++, 'name': 'VB2'}, {'id': id++, 'name': 'U'}])
     }
 
     const onEventResize = (data) => {
