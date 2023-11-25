@@ -113,7 +113,7 @@ function App() {
             end.setMinutes(end.getMinutes() + event.end);
             adaptedEvents.push({
                 id: id++,
-                title: event.title,
+                title: event.title + " " + event.region,
                 allDay: false,
                 start: start,
                 end: end,
@@ -137,9 +137,13 @@ function App() {
     useEffect(() => {
         fetch('/events.json')
             .then(response => response.json())
-            .then(data => setEventsFromDisk(data), adaptEventsFromDisk())
+            .then(data => {
+                console.log(data);
+                setEventsFromDisk(data);
+                adaptEventsFromDisk();
+            })
             .catch(error => console.error(error));
-    }, [adaptEventsFromDisk]);
+    }, []);
 
     useEffect(() => {
         propagateMachinesToResources();
@@ -152,11 +156,13 @@ function App() {
                 <DnDCalendar
                     localizer={localizer}
                     onEventDrop={onEventDrop}
+                    step={5}
                     resources={resources}
                     resourceAccessor={'resourceId'}
                     resourceIdAccessor={'id'}
                     resourceTitleAccessor={'name'}
                     onEventResize={onEventResize}
+                    defaultView="day"
                     resizable
                     style={{height: "100vh"}}
                     events={events}
