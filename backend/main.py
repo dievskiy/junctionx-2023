@@ -1,12 +1,14 @@
-# Generate 20 patients
-# Each patient has seleted id, random region and corresponding fraction number,
 import random
 import pydantic
 import numpy as np
 import enum
-
+import json
 import collections
 from ortools.sat.python import cp_model
+
+AVERAGE_MINUTES_PER_FRACTION = 12
+
+PATIENTS_NUM = 40
 
 class Machine2(enum.Enum):
     TB1 = "TB1"
@@ -59,17 +61,6 @@ class Event2(pydantic.BaseModel):
     region: Region2
 
 
-# regions with probabilities (in dict)
-# REGIONS_INFO = {Region.Craniospinal: {"probability": 0.01, "fraction_options": [13, 17, 20, 30]},
-#            Region.Breast: {"probability": 0.25, "fraction_options": [15, 19, 25, 30]},
-#            Region.Breast_special: {"probability": 0.05, "fraction_options": [15, 19, 25, 30]},
-#            Region.Head_and_neck: {"probability": 0.1, "fraction_options": [5, 10, 15, 25, 30, 33, 35]},
-#            Region.Abdomen: {"probability": 0.1, "fraction_options": [1, 3, 5, 8, 10, 12, 15, 18, 20, 30]},
-#            Region.Pelvis: {"probability": 0.18, "fraction_options": [1, 3, 5, 10, 15, 22, 23, 25, 28, 35]},
-#            Region.Crane: {"probability": 0.04, "fraction_options": [1, 5, 10, 13, 25, 30]},
-#            Region.Lung: {"probability": 0.12, "fraction_options": [1, 5, 10, 15, 20, 25, 30, 33]},
-#            Region.Lung_special: {"probability": 0.05, "fraction_options": [3, 5, 8]},
-#            Region.Whole_Brain: {"probability": 0.1, "fraction_options": [5, 10, 12]}}
 REGIONS_INFO = {Region2.Craniospinal: {"probability": 0.04, "fraction_options": [13, 17, 20, 30]},
            Region2.Breast: {"probability": 1.0, "fraction_options": [15, 19, 25, 30]},
            Region2.Breast_special: {"probability": 0.20, "fraction_options": [15, 19, 25, 30]},
@@ -80,9 +71,6 @@ REGIONS_INFO = {Region2.Craniospinal: {"probability": 0.04, "fraction_options": 
            Region2.Lung: {"probability": 0.48, "fraction_options": [1, 5, 10, 15, 20, 25, 30, 33]},
            Region2.Lung_special: {"probability": 0.20, "fraction_options": [3, 5, 8]},
            Region2.Whole_Brain: {"probability": 0.4, "fraction_options": [5, 10, 12]}}
-
-# normalized probabilities from 0 to 1, where 0 is the minumum and 1 is the maximum (0.25 corresponds to 1)
-# normalized_probabilities = [0.04, 1.0, 0.20, 0.4, 0.4, 0.72, 0.12, 0.48, 0.20, 0.4]
 
 
 MACHINE_REGION_MAP = {
@@ -97,7 +85,6 @@ MACHINE_REGION_MAP = {
 
 MACHINES = [Machine2.TB1, Machine2.TB2, Machine2.VB1, Machine2.VB2, Machine2.U]
 
-# map to track when machines are next free (in minutes from the beginning)
 MACHINE_RESERVATION_MAP = {
     Machine2.TB1: 0,
     Machine2.TB2: 0,
@@ -126,7 +113,6 @@ def compute_loss_for_reservations(reservations):
     
 def generate_random_fraction_duration():
     return np.random.randint(0, 24) + AVERAGE_MINUTES_PER_FRACTION
-    # return AVERAGE_MINUTES_PER_FRACTION
 
 
 def make_reservation(patient, machines, reservations):
@@ -142,7 +128,6 @@ def make_reservation(patient, machines, reservations):
             
     duration = generate_random_fraction_duration()
     MACHINE_RESERVATION_MAP[m] += duration
-    # reservations.append(Reservation(patient=patient, machine=m, start_time=closest_time_minutes, end_time=closest_time_minutes + AVERAGE_MINUTES_PER_FRACTION, urgency=REGIONS_INFO[patient.region]["probability"]))
     reservations.append(Reservation2(patient=patient, machine=m, start_time=closest_time_minutes, end_time=closest_time_minutes + duration, urgency=REGIONS_INFO[patient.region]["probability"]))
     assert(m is not None)
     
@@ -154,23 +139,17 @@ def create_all_reservations(patients, reservations):
 
 
 
-AVERAGE_MINUTES_PER_FRACTION = 12 # 12 minutes
-
-PATIENTS_NUM = 40
-
 def create_events(reservations):
     events = []
     for r in reservations:
         events.append(Event2(title=str(f"{r.urgency} {r.patient.id}"), machine=r.machine, start=r.start_time, end=r.end_time, region=r.patient.region))
 
-    # create dict of events but also parse Machine and Region as strings
     events_json = []
     for e in events:
         e.machine = e.machine.value
         e.region = e.region.value
         events_json.append(e.dict())
 
-    import json
     with open("../front/web/public/events.json", "w") as f:
         json.dump(events_json, f)
         
@@ -190,7 +169,6 @@ def main():
         random_picked = random.sample(patients, PATIENTS_NUM)
         processed_ids = [patient.id for patient in random_picked]
         hash_processed = hash(tuple(processed_ids))
-        # if hash_processed not in processed_hashes:
         create_all_reservations(random_picked, reservations)
         loss = compute_loss_for_reservations(reservations)
         if loss > max_loss:
@@ -200,9 +178,6 @@ def main():
         if loss < min_loss:
             min_loss = loss
             r_with_min_loss = reservations.copy()
-        # else:
-        #     print("loss", loss)
-        #     print(reservations)
         processed_hashes.add(hash_processed)
         reservations.clear()
         MACHINE_RESERVATION_MAP[Machine2.TB1] = 0
@@ -211,17 +186,7 @@ def main():
         MACHINE_RESERVATION_MAP[Machine2.VB2] = 0
         MACHINE_RESERVATION_MAP[Machine2.U] = 0
 
-        # else:
-            # print("already processed")
         n += 1
-        # break
-
-    # print(MACHINE_RESERVATION_MAP)
-    # print(reservations)
-    print(r_with_min_loss)
-    print(r_with_max_loss)
-    print(min_loss)
-    print(max_loss)
 
     create_events(r_with_min_loss)
 
@@ -254,8 +219,6 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         self.__min_objective = float("inf")
 
     def on_solution_callback(self):
-        # print("Solution %i, time = %f s, objective = %i" % (
-        #     self.__solution_count, self.WallTime(), self.ObjectiveValue()))
 
         if self.ObjectiveValue() < self.__min_objective:
             self.__min_objective = self.ObjectiveValue()
@@ -278,23 +241,6 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
                         events.append(Event(machine_name, start_value, start_value + treatment.duration, patient_id, treatment.region))
                         treatment_session_index += 1
             
-
-        # for patient_id, patient in enumerate(self.__patients):
-        #     print("Patient %i:" % patient_id)
-        #     treatment_session_index = 0  # Index for treatment sessions across all treatments
-        #     for treatment_idx, treatment in enumerate(patient.treatments):
-        #         for session_id in range(treatment.num_sessions):
-        #             key = (patient_id, treatment_session_index, session_id)
-        #             start_value = self.Value(self.__starts[key])
-        #             machine_idx = -1
-        #             for alt_id, machine_id in enumerate(self.__machines_for_treatments[patient_id][treatment_session_index]):
-        #                 if self.Value(self.__presences[key + (alt_id,)]):
-        #                     machine_idx = machine_id
-        #                     break  # We found the assigned machine
-        #             machine_name = machines[machine_idx].name if machine_idx != -1 else "N/A"
-        #             print("  Treatment %i session %i starts at %i on machine %s with duration %i" % (
-        #                 treatment_idx, session_id, start_value, machine_name, treatment.duration))
-        #             treatment_session_index += 1  # Increment after each session
             self.__solution_count += 1
 
 class Machine:
@@ -336,16 +282,8 @@ machines = [
 ]
 
 # patients = [
-#     Patient([Treatment("Breast", 10, 15)]),  # 3 sessions, each with duration 1
-#     Patient([Treatment("Lung", 12, 5)]),    # 4 sessions, each with duration 1
-#     Patient([Treatment("Crane", 14, 8)]),   # 2 sessions, each with duration 1
-#     Patient([Treatment("Breast", 12, 20)]),   # 2 sessions, each with duration 1
-#     Patient([Treatment("Lung_special", 12, 20)]),   # 2 sessions, each with duration 1
-#     Patient([Treatment("Head_and_neck", 12, 20)]),   # 2 sessions, each with duration 1
-#     Patient([Treatment("Pelvis", 12, 20)]),   # 2 sessions, each with duration 1
+#     Patient([Treatment("Breast", 10, 15)]),
 # ]
-
-# print(patients)
 
 def map_patient2_to_patient(patients2):
     patients = []
@@ -356,8 +294,7 @@ def map_patient2_to_patient(patients2):
         patients.append(Patient(treatments))
     return patients
 
-p = generate_patients(10)
-patients = map_patient2_to_patient(p)
+patients = map_patient2_to_patient(generate_patients(PATIENTS_NUM))
 
 num_machines = len(machines)
 all_machines = range(num_machines)
@@ -369,17 +306,15 @@ horizon = sum(treatment.duration * treatment.num_sessions for patient in patient
 
 model = cp_model.CpModel()
 
-# Initialize start variables, interval variables, presences, and other necessary structures
 intervals = collections.defaultdict(list)
 starts = {}
 presences = {}
 machines_for_treatments = [[] for _ in all_patients]
 patient_ends = []
 
-# Model setup for each patient and their treatments
 for patient_id in all_patients:
     patient = patients[patient_id]
-    machine_assignment_idx = 0  # Reset index for each patient
+    machine_assignment_idx = 0
     previous_end = None
 
     # Precompute machines for treatments before creating variables
@@ -438,7 +373,7 @@ for machine_id in all_machines:
     if intervals[machine_id]:
         model.AddNoOverlap(intervals[machine_id])
 
-# Objective: minimize the makespan (latest treatment completion time)
+# minimize the makespan (latest treatment completion time)
 treatment_completion = model.NewIntVar(0, horizon, "treatment_completion")
 model.AddMaxEquality(treatment_completion, patient_ends)
 model.Minimize(treatment_completion)
@@ -449,35 +384,14 @@ status = solver.Solve(model, solution_printer)
 
 
 
-def create_events_2():
-    # first map events to Event2
-    import json
+def save_events_to_json():
     global events
-    events_to_save = []
-    # for e in events:
-    #     e = Event2(title=str(f"{e.patient}"), machine=e.machine, start=e.start, end=e.end, region=e.patient)
-    #     events_to_save.append(e)
-
-
-    # for r in reservations:
-    #     events_to_save.append(Event2(title=str(f"{r.urgency} {r.patient.id}"), machine=r.machine, start=r.start_time, end=r.end_time, region=r.patient.region))
-
-    # create dict of events but also parse Machine and Region as strings
     events_json = []
-    # for e in events_to_save:
-    #     e.machine = e.machine.value
-    #     e.region = e.region.value
-    #     events_json.append(e.dict())
 
     for e in events:
-        # e.region = e.region.name
         events_json.append({'title': e.machine, 'machine': e.machine, 'start': e.start, 'end': e.end, 'patient': e.patient, 'region': e.region})
-    # with open("../front/web/public/events.json", "w") as f:
+
     with open("../front/web/public/events_test.json", "w") as f:
         json.dump(events_json, f)
-        
-    return events_to_save
 
-create_events_2()
-# if __name__ == "__main__":
-#     main()
+save_events_to_json()
